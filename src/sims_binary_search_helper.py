@@ -3,7 +3,7 @@ import os
 from src.sims_binary_search import SimsBinarySearcher
 from src.bin_search_logging import SimsLogging
 
-inst_logger = SimsLogging()
+inst_logger = SimsLogging("BinSearchHelper")
 
 
 def extract_input_args():
@@ -48,6 +48,7 @@ if __name__ == '__main__':
                 #       else: GOTO MOVE operating on current_set
                 inst_logger.info("Issue RESOLVED, but set: {}, was larger than 1".format(my_searcher.get_current_set()))
                 my_searcher.move_search_backward()
+        my_searcher.save_current_object_state()     # keep the config files up-to-date
 
 
 

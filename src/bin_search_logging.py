@@ -9,8 +9,8 @@ class SimsLogging:
 
     def __init__(self, logger_name, logger_level=DEBUG, rotate_logs=False):
         tmp_date_string = datetime.now().isoformat().replace("T", "_").replace("-", "").replace(":", "")
-        tmp_file_name = "simsUnzipper_{}.log".format(tmp_date_string)
-        out_file_name = "simsUnzipper.log" if rotate_logs else tmp_file_name
+        tmp_file_name = "simsBinarySearcher_{}.log".format(tmp_date_string)
+        out_file_name = "simsBinarySearcher.log" if rotate_logs else tmp_file_name
         logging.basicConfig(filename=out_file_name, level=DEBUG, format="%(asctime)s %(message)s")
         if self.logger is None:
             self.logger = logging.getLogger(logger_name)
