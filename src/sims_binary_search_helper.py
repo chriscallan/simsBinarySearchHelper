@@ -1,5 +1,6 @@
 import sys
 import os
+from src.sims_binary_search import SimsBinarySearcher
 from src.bin_search_logging import SimsLogging
 
 inst_logger = SimsLogging()
@@ -27,4 +28,27 @@ def extract_input_args():
 
 if __name__ == '__main__':
     my_mods_path, my_mods_tmp_path = extract_input_args()
+    # just to give a chance to opt-out, in case you started this accidentally
+    start_question = input("Would you like to start binary searching the: {} directory?".format(my_mods_path))
+    my_searcher = SimsBinarySearcher(my_mods_path, my_mods_tmp_path)
+    my_searcher.move_search_forward()
+    while start_question:
+        print("Just moved {} files".format(len(my_searcher.get_current_set())))
+        # wait for input from user on whether issue was resolved or not
+        start_question = input("Did that resolve the issue?")
+        if start_question.lower() == "n":
+            #   if No: display top 10 potential files (can sometimes see the bad apple right off)
+            print("Issue NOT resolved.  top 10 'likely' items: {}".format(my_searcher.get_top_x_from_bisected_set()))
+            my_searcher.move_search_forward()
+        else:
+            if len(my_searcher.get_current_set()) == 1:
+                #   if Yes: look at size of last set, if size == 1 you've found your culprit
+                print("Found the most likely culprit: {}".format(my_searcher.get_current_set()))
+            else:
+                #       else: GOTO MOVE operating on current_set
+                inst_logger.info("Issue RESOLVED, but set: {}, was larger than 1".format(my_searcher.get_current_set()))
+                my_searcher.move_search_backward()
+
+
+
 
