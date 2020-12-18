@@ -1,6 +1,6 @@
 import json
 import os
-from shutil import move
+from shutil import move, copyfile
 from src.bin_search_logging import SimsLogging
 
 config_location = "config/sims_bin_search.cfg"
@@ -11,50 +11,44 @@ inst_logger = SimsLogging("SimBinSearcher")
 class SimsBinarySearcher:
     def __init__(self, in_mods_dir, in_tmp_dir):
         self.file_tracker = dict()
+        # auto backup an existing config file, if it exists
         if os.path.exists(config_location):
-            my_response = input("Previous config found.  Would you like to load it?")
-            if my_response.lower() == "y":
-                with open(config_location, "r") as pre_config_file:
-                    existing_config = json.load(pre_config_file)
-                    self.file_tracker["mods_dir"] = existing_config["mods_dir"]
-                    self.file_tracker["mods_tmp"] = existing_config["mods_tmp"]
-                    self.file_tracker["original_files"] = existing_config["original_files"]
-                    self.file_tracker["current_set"] = existing_config["current_set"]
-                    self.file_tracker["bisected_set"] = existing_config["bisected_set"]
-                    self.file_tracker["previous_sets"] = existing_config["previous_sets"]
-                    inst_logger.info("Loaded the configuration: \n".format(self.file_tracker))
-                    return      # after loading this up, there's nothing else to do
-            else:
-                bak_idx = len([x for x in os.listdir("config") if "bak" in os.path.splitext(x)[-1]])
-                move(config_location, config_location + ".bak" + str(bak_idx))
-                inst_logger.debug("Moved: {}, to: {}".format(config_location, config_location + ".bak" + str(bak_idx)))
-        self.initialize_default_structures(in_mods_dir, in_tmp_dir)
-
-    def __del__(self):
-        inst_logger.info("Saving configuration before destroying the object: {}".format(json.dumps(self.file_tracker)))
-        self.save_current_object_state()
-
-    def initialize_default_structures(self, in_mods_dir, in_tmp_dir):
+            bak_idx = len([x for x in os.listdir("config") if "bak" in os.path.splitext(x)[-1]])
+            move(config_location, config_location + ".bak" + str(bak_idx))
+            copyfile(config_location + ".template", config_location)
+        # now just read the blank/template in and move along
+        with open(config_location, "r") as config_checker:
+            existing_config = json.load(config_checker)
+            self.file_tracker = existing_config
+            inst_logger.info("Loaded the configuration: \n".format(self.file_tracker))
         self.file_tracker["mods_dir"] = in_mods_dir
         self.file_tracker["mods_tmp"] = in_tmp_dir
-        self.file_tracker["original_files"] = []  # starting list of files
-        self.file_tracker["current_set"] = []  # set that we're currently operating on
-        self.file_tracker["bisected_set"] = []  # other half of the 'current_set'
-        self.file_tracker["previous_sets"] = dict()  # listing of previous sets
-        inst_logger.debug("Created a new data storage structure pointing to: {} & {}"
-                          .format(self.file_tracker["mods_dir"], self.file_tracker["mods_tmp"]))
+
+    def __del__(self):
+        # inst_logger.info("Saving config before destroying the object: {}".format(json.dumps(self.file_tracker)))
+        self.save_current_object_state()
+    #
+    # def initialize_default_structures(self, in_mods_dir, in_tmp_dir):
+    #     self.file_tracker["mods_dir"] = in_mods_dir
+    #     self.file_tracker["mods_tmp"] = in_tmp_dir
+    #     self.file_tracker["original_files"] = []  # starting list of files
+    #     self.file_tracker["current_set"] = []  # set that we're currently operating on
+    #     self.file_tracker["bisected_set"] = []  # other half of the 'current_set'
+    #     self.file_tracker["previous_sets"] = dict()  # listing of previous sets
+    #     inst_logger.debug("Created a new data storage structure pointing to: {} & {}"
+    #                       .format(self.file_tracker["mods_dir"], self.file_tracker["mods_tmp"]))
 
     def save_current_object_state(self):
         try:
             with open(config_location, "w+") as config_file:
-                json.dump(self.file_tracker, config_file)
+                json.dump(self.file_tracker, config_file, indent=4)
         except Exception as exc:
             raise Exception("Exception occurred saving config file: {}".format(exc))
 
-    def _process_directory(self, from_dir, to_dir):
-        inst_logger.debug("called _process_directory() with: {}".format("\n".join(from_dir)))
-        self._move_half_to(from_dir, to_dir)
-        return self.file_tracker["current_set"], self.file_tracker["bisected_set"]
+    # def _process_directory(self, from_dir, to_dir):
+    #     inst_logger.debug("called _process_directory() with: {}".format("\n".join(from_dir)))
+    #     self._move_half_to(from_dir, to_dir)
+    #     return self.file_tracker["current_set"], self.file_tracker["bisected_set"]
 
     def move_search_forward(self):
         """
@@ -69,7 +63,7 @@ class SimsBinarySearcher:
         self.file_tracker["current_set"] = self.get_all_files_in_dir(self.file_tracker["mods_dir"])
         if len(self.file_tracker["current_set"]) == 0:
             raise Exception("There are no files in: {}".format(self.file_tracker["mods_dir"]))
-        self._process_directory(self.file_tracker["current_set"], self.file_tracker["mods_tmp"])
+        self._move_half_to(self.file_tracker["current_set"], self.file_tracker["mods_tmp"])
         return self.file_tracker["current_set"], self.file_tracker["bisected_set"]
 
     def move_search_backward(self):
@@ -79,9 +73,8 @@ class SimsBinarySearcher:
             This will operate on the 'bisected_set'
         :return: two lists: current_set & bisected_set
         """
-        back_list = [os.path.join(self.file_tracker["mods_tmp"], os.path.split(x)[-1])
-                     for x in self.get_most_recent_previous_set()]
-        self._process_directory(back_list, self.file_tracker["mods_dir"])
+        back_list = self.get_move_backward_set()
+        self._move_half_to(back_list, self.file_tracker["mods_dir"])
         return self.file_tracker["current_set"], self.file_tracker["bisected_set"]
 
     def _set_current_and_bisected_lists(self):
@@ -97,6 +90,8 @@ class SimsBinarySearcher:
         :param move_dest: directory to move things to
         :return: n/a
         """
+        if len(self.file_tracker["original_files"]) == 0:
+            self.file_tracker["original_files"] = self.get_all_files_in_dir(os.path.split(in_file_list[0])[0])
         midway_idx = len(in_file_list) // 2
         self.file_tracker["current_set"] = in_file_list[midway_idx:]
         self.file_tracker["bisected_set"] = in_file_list[0:midway_idx]
@@ -105,7 +100,8 @@ class SimsBinarySearcher:
         for current_file in self.file_tracker["current_set"]:
             move(current_file, move_dest)
             inst_logger.info("Moved: {}".format(current_file))
-            moved_files.append(current_file)
+            # moved_files.append(os.path.join(move_dest, os.path.split(current_file)[-1]))
+            moved_files.append(current_file)        # keep track of the file's source location here
         #   note moved files in previous_sets.<runNumber> element (list of file paths)
         self.file_tracker["previous_sets"][self._get_next_previous_set_id()] = moved_files
 
@@ -127,6 +123,21 @@ class SimsBinarySearcher:
 
     def get_most_recent_previous_set(self):
         return self.file_tracker["previous_sets"][self._get_last_previous_set_id()]
+
+    def get_move_backward_set(self):
+        most_recent = self.get_most_recent_previous_set()   # get the most recent set we moved
+        # Basically 2 cases,
+        # 1) came from mods_dir - it falls through to 'return'
+        # 2) came from mods_tmp - we keep updating most_recent until we find our move from mods_dir
+        working_idx = int(self._get_last_previous_set_id()) - 1
+        for i in range(len(most_recent)):
+            most_recent[i] = os.path.join(self.file_tracker["mods_tmp"], os.path.split(most_recent[i])[-1])
+        # while self.file_tracker["mods_dir"] not in most_recent[0]:
+        #     most_recent = self.file_tracker["previous_sets"][working_idx]
+        #     working_idx -= 1
+        if len(most_recent) != len(set(most_recent)):
+            raise Exception("Somehow ended up with duplicate entries: {}".format("\n".join(most_recent)))
+        return most_recent
 
     def _get_next_previous_set_id(self):
         return str(int(max(self.file_tracker["previous_sets"].keys(), default=0)) + 1)
