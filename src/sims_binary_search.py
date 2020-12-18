@@ -54,9 +54,6 @@ class SimsBinarySearcher:
     def _process_directory(self, from_dir, to_dir):
         inst_logger.debug("called _process_directory() with: {}".format("\n".join(from_dir)))
         self._move_half_to(from_dir, to_dir)
-        #   note moved files in previous_sets.<runNumber> element (list of file paths)
-        prev_set_idx = self._get_next_previous_set_id()
-        self.file_tracker["previous_sets"][prev_set_idx] = self.file_tracker["current_set"]
         return self.file_tracker["current_set"], self.file_tracker["bisected_set"]
 
     def move_search_forward(self):
@@ -66,10 +63,12 @@ class SimsBinarySearcher:
             This will operate on the 'current_set'
         :return: two lists: current_set & bisected_set
         """
-        inst_logger.info("move_search_forward, from: {}, to: {}".format(self.file_tracker["bisected_set"],
+        inst_logger.info("move_search_forward, from: {}, to: {}".format(self.file_tracker["current_set"],
                                                                         self.file_tracker["mods_tmp"]))
+        # if len(self.file_tracker["current_set"]) == 0:
+        self.file_tracker["current_set"] = self.get_all_files_in_dir(self.file_tracker["mods_dir"])
         if len(self.file_tracker["current_set"]) == 0:
-            self.file_tracker["current_set"] = self.get_all_files_in_dir(self.file_tracker["mods_dir"])
+            raise Exception("There are no files in: {}".format(self.file_tracker["mods_dir"]))
         self._process_directory(self.file_tracker["current_set"], self.file_tracker["mods_tmp"])
         return self.file_tracker["current_set"], self.file_tracker["bisected_set"]
 
@@ -80,9 +79,9 @@ class SimsBinarySearcher:
             This will operate on the 'bisected_set'
         :return: two lists: current_set & bisected_set
         """
-        if len(self.file_tracker["bisected_set"]) == 0:
-            self._set_current_and_bisected_lists()
-        self._process_directory(self.file_tracker["bisected_set"], self.file_tracker["mods_dir"])
+        back_list = [os.path.join(self.file_tracker["mods_tmp"], os.path.split(x)[-1])
+                     for x in self.get_most_recent_previous_set()]
+        self._process_directory(back_list, self.file_tracker["mods_dir"])
         return self.file_tracker["current_set"], self.file_tracker["bisected_set"]
 
     def _set_current_and_bisected_lists(self):
@@ -102,9 +101,13 @@ class SimsBinarySearcher:
         self.file_tracker["current_set"] = in_file_list[midway_idx:]
         self.file_tracker["bisected_set"] = in_file_list[0:midway_idx]
         # MOVE: move half of mods_dir to mods_tmp
+        moved_files = []
         for current_file in self.file_tracker["current_set"]:
             move(current_file, move_dest)
             inst_logger.info("Moved: {}".format(current_file))
+            moved_files.append(current_file)
+        #   note moved files in previous_sets.<runNumber> element (list of file paths)
+        self.file_tracker["previous_sets"][self._get_next_previous_set_id()] = moved_files
 
     def get_all_files_in_dir(self, in_path):
         for tmp_path, tmp_dirs, tmp_files in os.walk(in_path):
@@ -123,11 +126,10 @@ class SimsBinarySearcher:
         return self.file_tracker["bisected_set"][:num]
 
     def get_most_recent_previous_set(self):
-        self._get_next_previous_set_idx()
-        return self.file_tracker["previous_set"][self._get_last_previous_set_idx()]
+        return self.file_tracker["previous_sets"][self._get_last_previous_set_id()]
 
     def _get_next_previous_set_id(self):
-        return max(self.file_tracker["previous_sets"].keys(), default=0) + 1
+        return str(int(max(self.file_tracker["previous_sets"].keys(), default=0)) + 1)
 
     def _get_last_previous_set_id(self):
         return max(self.file_tracker["previous_sets"].keys(), default=0)
